@@ -35,7 +35,7 @@ def load_data():
 def add_targets(df: pd.DataFrame) -> pd.DataFrame:
     # Gelecek 10 günlük getiri (aynı hisse içinde)
     df["future_ret_10d"] = (
-        df.groupby("symbol")["close"]
+        df.groupby("symbol")["price_close"]
         .apply(lambda s: s.shift(-HORIZON) / s - 1.0)
         .reset_index(level=0, drop=True)
     )
@@ -73,6 +73,9 @@ def prepare_features(df: pd.DataFrame):
         "reasoning",
         "future_ret_10d",
         "y_event_10d",
+        "period",  # '2020/3' gibi string format, feature olarak kullanılamaz
+        "announcement_date",  # datetime
+        "publishDate",  # datetime
     ]
 
     # Her ihtimale karşı target / label olabilecek kolonları da at
@@ -83,16 +86,34 @@ def prepare_features(df: pd.DataFrame):
         if any(c.startswith(p) for p in drop_prefixes):
             cols_to_drop.add(c)
 
-    # Kategorik kolonlar
-    cat_cols = ["symbol", "shock_direction"]
+    # Kategorik kolonları otomatik tespit et (object dtype olanlar)
+    # Ama drop edilecek, target ve datetime kolonları hariç tut
+    datetime_like_cols = ["date", "period", "announcement_date", "publishDate"]
+    all_object_cols = df.select_dtypes(include=['object']).columns.tolist()
+    cat_cols = [
+        c for c in all_object_cols 
+        if c not in cols_to_drop and c not in ["date", "future_ret_10d", "y_event_10d"] and c not in datetime_like_cols
+    ]
+    
+    # Kategorik kolonları string'e çevir (CatBoost gereksinimi)
+    for col in cat_cols:
+        if col in df.columns:
+            df[col] = df[col].astype(str).fillna("missing")
+    
+    print(f"🏷️  Kategorik kolonlar: {cat_cols}")
 
-    # Son feature listesi
+    # shock_direction'ı numerik ek feature'a çevir (zaten var)
+    # Ama kategorik olarak da kullanacağız
+
+    # Son feature listesi (symbol ve diğer kategorikler dahil)
     feature_cols = [
         c for c in df.columns
-        if c not in cols_to_drop and c not in ["symbol", "shock_direction"]
-    ] + cat_cols  # cat'leri sona ekle
+        if c not in cols_to_drop and c not in ["date", "future_ret_10d", "y_event_10d"]
+    ]
 
-    df_model = df[["symbol", "date", "future_ret_10d", "y_event_10d"] + feature_cols].copy()
+    # df_model oluştururken sadece gerekli kolonları al
+    # feature_cols zaten symbol içeriyor, tekrar eklemeyelim
+    df_model = df[["date", "future_ret_10d", "y_event_10d"] + feature_cols].copy()
 
     return df_model, feature_cols, cat_cols
 
