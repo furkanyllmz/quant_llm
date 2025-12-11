@@ -58,7 +58,6 @@ qwen-kap-final/
 # Large data / generated outputs (optional - keep if you want these tracked)
 embeddings/
 novelty/
-llm_features/
 context_data/
 context_data_test/
 
