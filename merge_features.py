@@ -10,7 +10,7 @@ NOVELTY_DIR = "./novelty"
 LLM_DIR = "./llm_features"
 OUTPUT_PATH = "./merged_master_test.csv"
 
-# Sadece 4 hisseyi kullanıyoruz
+# Sadece 4 hisseyi işliyoruz
 TARGET_SYMBOLS = ["SASA", "HEKTS", "THYAO", "TUPRS"]
 
 
@@ -24,10 +24,13 @@ def load_novelty():
         sym = os.path.basename(fp).replace("_novelty.parquet", "")
         if sym not in TARGET_SYMBOLS:
             continue
+
         df = pd.read_parquet(fp)
         df["symbol"] = sym
         df.rename(columns={"publishDate": "date"}, inplace=True)
+
         rows.append(df[["symbol", "date", "novelty"]])
+
     return pd.concat(rows, ignore_index=True)
 
 
@@ -38,10 +41,13 @@ def load_llm():
         sym = os.path.basename(fp).replace("_llm_features.parquet", "")
         if sym not in TARGET_SYMBOLS:
             continue
+
         df = pd.read_parquet(fp)
         df["symbol"] = sym
         df.rename(columns={"publishDate": "date"}, inplace=True)
+
         rows.append(df)
+
     return pd.concat(rows, ignore_index=True)
 
 
@@ -69,14 +75,31 @@ def main():
     print("🔄 Merge 2: master + llm_features")
     df = df.merge(df_llm, on=["symbol", "date"], how="left")
 
-    # Eksik olan KAP olmayan günler → doldur
+    # =====================================================
+    # 🟩 has_kap = 1 → o gün şirket KAP açıklaması yapmış
+    # 🟥 has_kap = 0 → o gün hiç açıklama yok (Feature'lar bilinçli olarak 0)
+    # =====================================================
+    print("🟦 has_kap bayrağı ekleniyor...")
+
+    df["has_kap"] = (~df["novelty"].isna()).astype(int)
+
+    # =====================================================
+    # Eksik LLM/Novelty değerlerini doldur (haber olmayan günler için)
+    # =====================================================
     llm_cols = [
-        "fine_sentiment","risk_score","impact_score","tone_shift",
-        "uncertainty_score","actionability","financial_impact_strength",
-        "forward_vs_backward_ratio","regulatory_pressure"
+        "fine_sentiment",
+        "risk_score",
+        "impact_score",
+        "tone_shift",
+        "uncertainty_score",
+        "actionability",
+        "financial_impact_strength",
+        "forward_vs_backward_ratio",
+        "regulatory_pressure",
     ]
 
-    print("🧹 Null dolduruluyor (LLM + Novelty olmayan günler)")
+    print("🧹 Null dolduruluyor...")
+
     df["novelty"] = df["novelty"].fillna(0)
 
     for c in llm_cols:
@@ -90,7 +113,7 @@ def main():
     print(f"💾 Kaydediliyor → {OUTPUT_PATH}")
     df.to_csv(OUTPUT_PATH, index=False)
 
-    print("🎉 Tamamlandı! Birleşik dataset hazır.")
+    print("🎉 Merge tamamlandı! Birleşik dataset hazır.")
 
 
 if __name__ == "__main__":
